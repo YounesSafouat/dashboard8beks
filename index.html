@@ -6,15 +6,17 @@
      <meta name="viewport" content="width=device-width, initial-scale=1.0">
      <title>Dashboard Commercial PRO</title>
      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
      <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
      <style>
           :root {
                --primary: #1a1a2e;
-               --secondary: #16213e;
-               --accent: #0f3460;
-               --highlight: #fffb00;
+               --secondary: #2d2d48;
+               --accent: #3a3a5a;
+               --highlight: #e94560;
                --text: #ffffff;
+               --sidebar-width: 280px;
           }
 
           * {
@@ -28,8 +30,9 @@
                background: var(--primary);
                color: var(--text);
                display: grid;
-               grid-template-columns: 240px 1fr;
+               grid-template-columns: var(--sidebar-width) 1fr;
                min-height: 100vh;
+               transition: grid-template-columns 0.3s ease;
           }
 
           .sidebar {
@@ -39,6 +42,51 @@
                position: sticky;
                top: 0;
                height: 100vh;
+               display: flex;
+               flex-direction: column;
+               overflow: hidden;
+          }
+
+          .sidebar.collapsed {
+               --sidebar-width: 60px;
+               align-items: center;
+          }
+
+          .sidebar-header {
+               display: flex;
+               align-items: center;
+               justify-content: space-between;
+               margin-bottom: 2rem;
+               min-height: 60px;
+          }
+
+          .sidebar.collapsed .sidebar-header {
+               flex-direction: column;
+               gap: 1rem;
+          }
+
+          .logo {
+               width: 180px;
+               transition: all 0.3s ease;
+          }
+
+          .sidebar.collapsed .logo {
+               width: 40px;
+               min-width: 40px;
+          }
+
+          .toggle-sidebar {
+               background: none;
+               border: none;
+               color: var(--highlight);
+               font-size: 1.5rem;
+               cursor: pointer;
+               padding: 0.5rem;
+               transition: transform 0.3s ease;
+          }
+
+          .sidebar.collapsed .toggle-sidebar {
+               transform: rotate(180deg);
           }
 
           .main-content {
@@ -46,12 +94,30 @@
                display: grid;
                gap: 2rem;
                grid-template-rows: auto auto auto 1fr;
+               width: calc(100vw - var(--sidebar-width));
+               transition: all 0.3s ease;
           }
 
           .filters {
                display: grid;
                gap: 1rem;
+               transition: opacity 0.3s ease;
           }
+
+          .sidebar.collapsed .filters {
+               opacity: 0;
+               pointer-events: none;
+          }
+
+          .sidebar.collapsed select,
+          .sidebar.collapsed input {
+               width: 40px;
+               height: 40px;
+               padding: 0;
+               overflow: hidden;
+               border-radius: 8px;
+          }
+
 
           select,
           input {
@@ -118,7 +184,12 @@
 
 <body>
      <aside class="sidebar">
-          <h2>Filtres</h2>
+          <div class="sidebar-header">
+               <img src="beks-logo.svg" alt="Company Logo" class="logo">
+               <button class="toggle-sidebar" onclick="toggleSidebar()" title="Toggle Sidebar">
+                    <i class="fas fa-bars"></i>
+               </button>
+          </div>
           <div class="filters">
                <select id="commercialSelect" title="Commercial">
                     <option value="">Tous les commerciaux</option>
@@ -126,8 +197,8 @@
                <select id="gammeSelect" title="Gamme">
                     <option value="">Toutes les gammes</option>
                </select>
-               <input type="date" id="startDate" placeholder="Date de début">
-               <input type="date" id="endDate" placeholder="Date de fin">
+               <input type="date" id="startDate" title="Date de début">
+               <input type="date" id="endDate" title="Date de fin">
           </div>
      </aside>
 
@@ -173,7 +244,21 @@
                <tbody></tbody>
           </table>
      </main>
+     <script>
+          function toggleSidebar() {
+               const sidebar = document.querySelector('.sidebar');
+               sidebar.classList.toggle('collapsed');
 
+               // Update charts after resize
+               setTimeout(() => {
+                    if (charts.performance) charts.performance.resize();
+                    if (charts.distribution) charts.distribution.resize();
+               }, 350);
+          }
+
+          // Keep all previous JavaScript functionality
+          // ... (Previous JavaScript code here) ...
+     </script>
      <script>
           let allData = [];
           let objectives = {};
