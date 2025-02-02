@@ -1,0 +1,43 @@
+{
+     "Ismael Ben El Khadir": {
+       "PNEUS": 57125000,
+       "TDR": 12162500,
+       "USURE": 5662500,
+       "ROULEMENTS": 1850000,
+       "AUTRE": 2650000
+     },
+     "Adam Ben El Khadir": {
+       "PNEUS": 16875000,
+       "TDR": 1937500,
+       "USURE": 2337500,
+       "AUTRE": 600000
+     },
+     "Tawfiq Bouloued": {
+       "PNEUS": 14770000,
+       "TDR": 9155000,
+       "USURE": 7975000
+     },
+     "Hicham Akhchane": {
+       "PNEUS": 8990000,
+       "TDR": 5835000,
+       "USURE": 4835000,
+       "AUTRE": 140000
+     },
+     "Fatim Zahra Boumandil": {
+       "PNEUS": 2345000,
+       "TDR": 837500,
+       "USURE": 687500,
+       "AUTRE": 280000
+     },
+     "Abdeljalil Maimouny": {
+       "PNEUS": 7120000,
+       "TDR": 4682500,
+       "USURE": 4402500,
+       "ROULEMENTS": 125000,
+       "AUTRE": 410000
+     },
+     "Rachid Chikeb": {
+       "ROULEMENTS": 14250000,
+       "ROULEAUX": 12150000
+     }
+   }

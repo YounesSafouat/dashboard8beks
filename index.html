@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Dashboard Commercial PRO</title>
+     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+     <style>
+          :root {
+               --primary: #1a1a2e;
+               --secondary: #16213e;
+               --accent: #0f3460;
+               --highlight: #fffb00;
+               --text: #ffffff;
+          }
+
+          * {
+               box-sizing: border-box;
+               margin: 0;
+               padding: 0;
+          }
+
+          body {
+               font-family: 'Inter', sans-serif;
+               background: var(--primary);
+               color: var(--text);
+               display: grid;
+               grid-template-columns: 240px 1fr;
+               min-height: 100vh;
+          }
+
+          .sidebar {
+               background: var(--secondary);
+               padding: 1.5rem;
+               border-right: 1px solid var(--accent);
+               position: sticky;
+               top: 0;
+               height: 100vh;
+          }
+
+          .main-content {
+               padding: 2rem;
+               display: grid;
+               gap: 2rem;
+               grid-template-rows: auto auto auto 1fr;
+          }
+
+          .filters {
+               display: grid;
+               gap: 1rem;
+          }
+
+          select,
+          input {
+               background: var(--accent);
+               border: 1px solid var(--highlight);
+               color: var(--text);
+               padding: 0.5rem;
+               border-radius: 4px;
+               width: 100%;
+          }
+
+          .summary-cards {
+               display: grid;
+               grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+               gap: 1.5rem;
+          }
+
+          .card {
+               background: var(--secondary);
+               padding: 1.5rem;
+               border-radius: 8px;
+               border: 1px solid var(--accent);
+          }
+
+          .chart-container {
+               background: var(--secondary);
+               padding: 1.5rem;
+               border-radius: 8px;
+               height: 400px;
+          }
+
+          .table-controls {
+               margin-bottom: 1rem;
+          }
+
+          .search-input {
+               background: var(--accent);
+               border: 1px solid var(--highlight);
+               color: var(--text);
+               padding: 0.75rem;
+               border-radius: 4px;
+               width: 300px;
+          }
+
+          table {
+               width: 100%;
+               border-collapse: collapse;
+               background: var(--secondary);
+          }
+
+          th,
+          td {
+               padding: 1rem;
+               text-align: left;
+               border-bottom: 1px solid var(--accent);
+          }
+
+          .highlight {
+               color: var(--highlight);
+               font-weight: 600;
+          }
+     </style>
+</head>
+
+<body>
+     <aside class="sidebar">
+          <h2>Filtres</h2>
+          <div class="filters">
+               <select id="commercialSelect" title="Commercial">
+                    <option value="">Tous les commerciaux</option>
+               </select>
+               <select id="gammeSelect" title="Gamme">
+                    <option value="">Toutes les gammes</option>
+               </select>
+               <input type="date" id="startDate" placeholder="Date de début">
+               <input type="date" id="endDate" placeholder="Date de fin">
+          </div>
+     </aside>
+
+     <main class="main-content">
+          <div class="summary-cards">
+               <div class="card">
+                    <h3>Objectif Total</h3>
+                    <p class="highlight" id="totalObjective">-</p>
+               </div>
+               <div class="card">
+                    <h3>Réalisation Totale</h3>
+                    <p class="highlight" id="totalAchieved">-</p>
+               </div>
+               <div class="card">
+                    <h3>Taux d'Accomplissement</h3>
+                    <p class="highlight" id="achievementRate">-</p>
+               </div>
+          </div>
+
+          <div class="chart-container">
+               <canvas id="performanceChart"></canvas>
+          </div>
+
+          <div class="chart-container">
+               <canvas id="distributionChart"></canvas>
+          </div>
+
+          <div class="table-controls">
+               <input type="text" id="clientSearch" placeholder="Rechercher client..." class="search-input">
+          </div>
+
+          <table id="dataTable">
+               <thead>
+                    <tr>
+                         <th>Commercial</th>
+                         <th>Client</th>
+                         <th>Gamme</th>
+                         <th>Montant</th>
+                         <th>Objectif</th>
+                         <th>% Réalisé</th>
+                    </tr>
+               </thead>
+               <tbody></tbody>
+          </table>
+     </main>
+
+     <script>
+          let allData = [];
+          let objectives = {};
+          const allowedGammes = new Set(['PNEUS', 'TDR', 'USURE', 'ROULEMENTS']);
+          let charts = {
+               performance: null,
+               distribution: null
+          };
+          let currentFilteredData = [];
+
+          async function loadData() {
+               // Load sales CSV
+               const salesRes = await fetch('vente.csv');
+               const salesCSV = await salesRes.text();
+
+               Papa.parse(salesCSV, {
+                    header: true,
+                    complete: (results) => {
+                         allData = results.data.map(item => {
+                              const originalGamme = item.gamme === 'ND' ? 'AUTRE' : item.gamme;
+                              return {
+                                   commercial: item.Vendeur,
+                                   client: item.Client,
+                                   gamme: allowedGammes.has(originalGamme) ? originalGamme : 'AUTRE',
+                                   date: new Date(item['Date de création'].split('/').reverse().join('-')),
+                                   amount: Number(item['Numeric Subtotal'].replace(/[^0-9]/g, '')) / 100
+                              };
+                         });
+                    }
+               });
+
+               // Load and normalize objectives
+               const objRes = await fetch('objectives.json');
+               const rawObjectives = await objRes.json();
+
+               // Normalize objectives data
+               objectives = {};
+               for (const [commercial, gammes] of Object.entries(rawObjectives)) {
+                    objectives[commercial] = {};
+                    for (const [gamme, value] of Object.entries(gammes)) {
+                         const normalizedGamme = allowedGammes.has(gamme) ? gamme : 'AUTRE';
+                         objectives[commercial][normalizedGamme] = (objectives[commercial][normalizedGamme] || 0) + value;
+                    }
+               }
+          }
+
+          function formatCurrency(amount) {
+               return new Intl.NumberFormat('fr-FR', {
+                    style: 'currency',
+                    currency: 'MAD',
+                    maximumFractionDigits: 0
+               }).format(amount);
+          }
+
+          function getObjective(commercial, gamme) {
+               return objectives[commercial]?.[gamme] || 0;
+          }
+
+          function updateDashboard() {
+               const commercial = document.getElementById('commercialSelect').value;
+               const gamme = document.getElementById('gammeSelect').value;
+               const startDate = document.getElementById('startDate').valueAsDate;
+               const endDate = document.getElementById('endDate').valueAsDate;
+
+               // Filter sales data
+               currentFilteredData = allData.filter(item => {
+                    const dateMatch = (!startDate || item.date >= startDate) &&
+                         (!endDate || item.date <= endDate);
+                    const commercialMatch = !commercial || item.commercial === commercial;
+                    const gammeMatch = !gamme || item.gamme === gamme;
+
+                    return dateMatch && commercialMatch && gammeMatch;
+               });
+
+               // Calculate objectives
+               let totalObjective = 0;
+               if (commercial && gamme) {
+                    totalObjective = getObjective(commercial, gamme);
+               } else if (commercial) {
+                    totalObjective = Object.values(objectives[commercial] || {}).reduce((a, b) => a + b, 0);
+               } else {
+                    totalObjective = Object.values(objectives).flatMap(c => Object.values(c)).reduce((a, b) => a + b, 0);
+               }
+
+               const totalAchieved = currentFilteredData.reduce((sum, item) => sum + item.amount, 0);
+               const achievementRate = totalObjective > 0
+                    ? (totalAchieved / totalObjective * 100).toFixed(1) + '%'
+                    : 'N/A';
+
+               // Update UI
+               document.getElementById('totalObjective').textContent = formatCurrency(totalObjective);
+               document.getElementById('totalAchieved').textContent = formatCurrency(totalAchieved);
+               document.getElementById('achievementRate').textContent = achievementRate;
+
+               // Update charts
+               updateCharts(totalObjective, totalAchieved, currentFilteredData);
+               updateTable();
+          }
+
+          function updateCharts(objective, achieved, data) {
+               // Performance Chart
+               if (!charts.performance) {
+                    charts.performance = new Chart(document.getElementById('performanceChart'), {
+                         type: 'bar',
+                         data: {
+                              labels: ['Objectif', 'Réalisé'],
+                              datasets: [{
+                                   label: 'Performance',
+                                   data: [objective, achieved],
+                                   backgroundColor: ['#0f3460', '#fffb00']
+                              }]
+                         },
+                         options: {
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              scales: {
+                                   y: { beginAtZero: true }
+                              }
+                         }
+                    });
+               } else {
+                    charts.performance.data.datasets[0].data = [objective, achieved];
+                    charts.performance.update();
+               }
+
+               // Distribution Chart
+               const gammeGroups = data.reduce((acc, item) => {
+                    acc[item.gamme] = (acc[item.gamme] || 0) + item.amount;
+                    return acc;
+               }, {});
+
+               // Ensure all allowed gammes appear in chart
+               allowedGammes.forEach(g => {
+                    if (!gammeGroups[g]) gammeGroups[g] = 0;
+               });
+               gammeGroups['AUTRE'] = gammeGroups['AUTRE'] || 0;
+
+               if (!charts.distribution) {
+                    charts.distribution = new Chart(document.getElementById('distributionChart'), {
+                         type: 'doughnut',
+                         data: {
+                              labels: [...allowedGammes, 'AUTRE'],
+                              datasets: [{
+                                   label: 'Répartition',
+                                   data: [...allowedGammes, 'AUTRE'].map(g => gammeGroups[g] || 0),
+                                   backgroundColor: ['#fffb00', '#0f3460', '#1a1a2e', '#16213e', '#4d4dff']
+                              }]
+                         },
+                         options: {
+                              responsive: true,
+                              maintainAspectRatio: false
+                         }
+                    });
+               } else {
+                    charts.distribution.data.labels = [...allowedGammes, 'AUTRE'];
+                    charts.distribution.data.datasets[0].data = [...allowedGammes, 'AUTRE'].map(g => gammeGroups[g] || 0);
+                    charts.distribution.update();
+               }
+          }
+
+          function updateTable() {
+               const searchTerm = document.getElementById('clientSearch').value.toLowerCase();
+               const filteredBySearch = currentFilteredData.filter(item =>
+                    item.client.toLowerCase().includes(searchTerm)
+               );
+
+               const tbody = document.querySelector('#dataTable tbody');
+               tbody.innerHTML = filteredBySearch.map(item => {
+                    const objective = getObjective(item.commercial, item.gamme);
+                    const percentage = objective > 0
+                         ? (item.amount / objective * 100).toFixed(1) + '%'
+                         : 'N/A';
+
+                    return `
+                    <tr>
+                        <td>${item.commercial}</td>
+                        <td>${item.client}</td>
+                        <td>${item.gamme}</td>
+                        <td>${formatCurrency(item.amount)}</td>
+                        <td>${formatCurrency(objective)}</td>
+                        <td>${percentage}</td>
+                    </tr>
+                `;
+               }).join('');
+          }
+
+          // Initialization
+          document.addEventListener('DOMContentLoaded', async () => {
+               await loadData();
+
+               // Populate commercial filter
+               const commercials = [...new Set(allData.map(item => item.commercial))];
+               const commercialSelect = document.getElementById('commercialSelect');
+               commercials.forEach(c => {
+                    commercialSelect.add(new Option(c, c));
+               });
+
+               // Update gamme filter when commercial changes
+               commercialSelect.addEventListener('change', () => {
+                    const gammeSelect = document.getElementById('gammeSelect');
+                    gammeSelect.innerHTML = '<option value="">Toutes les gammes</option>';
+
+                    const selectedCommercial = commercialSelect.value;
+                    if (selectedCommercial && objectives[selectedCommercial]) {
+                         // Always show all allowed gammes + AUTRE
+                         [...allowedGammes, 'AUTRE'].forEach(g => {
+                              if (objectives[selectedCommercial][g]) {
+                                   gammeSelect.add(new Option(g, g));
+                              }
+                         });
+                    }
+
+                    updateDashboard();
+               });
+
+               // Initial update
+               updateDashboard();
+          });
+
+          // Filter event listeners
+          document.getElementById('gammeSelect').addEventListener('change', updateDashboard);
+          document.getElementById('startDate').addEventListener('change', updateDashboard);
+          document.getElementById('endDate').addEventListener('change', updateDashboard);
+          document.getElementById('clientSearch').addEventListener('input', updateTable);
+     </script>
+</body>
+
+</html>
