@@ -118,7 +118,6 @@
                border-radius: 8px;
           }
 
-
           select,
           input {
                background: var(--accent);
@@ -187,7 +186,7 @@
           <div class="sidebar-header">
                <img src="beks-logo.svg" alt="Company Logo" class="logo">
                <button class="toggle-sidebar" onclick="toggleSidebar()" title="Toggle Sidebar">
-                    <i class="fas fa-bars"></i>
+                    <i class="fas fa-chevron-left"></i>
                </button>
           </div>
           <div class="filters">
@@ -244,22 +243,18 @@
                <tbody></tbody>
           </table>
      </main>
+
      <script>
           function toggleSidebar() {
                const sidebar = document.querySelector('.sidebar');
                sidebar.classList.toggle('collapsed');
 
-               // Update charts after resize
                setTimeout(() => {
                     if (charts.performance) charts.performance.resize();
                     if (charts.distribution) charts.distribution.resize();
                }, 350);
           }
 
-          // Keep all previous JavaScript functionality
-          // ... (Previous JavaScript code here) ...
-     </script>
-     <script>
           let allData = [];
           let objectives = {};
           const allowedGammes = new Set(['PNEUS', 'TDR', 'USURE', 'ROULEMENTS']);
@@ -269,8 +264,17 @@
           };
           let currentFilteredData = [];
 
+          const frenchMonths = [
+               'janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin',
+               'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'
+          ];
+
+          function getFrenchMonth(date) {
+               return frenchMonths[date.getMonth()];
+          }
+
           async function loadData() {
-               // Load sales CSV
+               // Load sales data
                const salesRes = await fetch('vente.csv');
                const salesCSV = await salesRes.text();
 
@@ -290,17 +294,29 @@
                     }
                });
 
-               // Load and normalize objectives
+               // Load objectives
                const objRes = await fetch('objectives.json');
                const rawObjectives = await objRes.json();
 
-               // Normalize objectives data
                objectives = {};
                for (const [commercial, gammes] of Object.entries(rawObjectives)) {
+                    if (commercial === 'year') continue;
+
                     objectives[commercial] = {};
-                    for (const [gamme, value] of Object.entries(gammes)) {
+                    for (const [gamme, data] of Object.entries(gammes)) {
                          const normalizedGamme = allowedGammes.has(gamme) ? gamme : 'AUTRE';
-                         objectives[commercial][normalizedGamme] = (objectives[commercial][normalizedGamme] || 0) + value;
+
+                         if (!objectives[commercial][normalizedGamme]) {
+                              objectives[commercial][normalizedGamme] = {
+                                   global: 0,
+                                   monthly: {}
+                              };
+                         }
+
+                         objectives[commercial][normalizedGamme].global = data.global;
+                         frenchMonths.forEach(month => {
+                              objectives[commercial][normalizedGamme].monthly[month] = data[month] || 0;
+                         });
                     }
                }
           }
@@ -313,8 +329,31 @@
                }).format(amount);
           }
 
-          function getObjective(commercial, gamme) {
-               return objectives[commercial]?.[gamme] || 0;
+          function calculateTotalObjective(filters) {
+               let total = 0;
+               const startDate = filters.startDate || new Date('2024-01-01');
+               const endDate = filters.endDate || new Date('2024-12-31');
+
+               const startMonth = startDate.getMonth();
+               const endMonth = endDate.getMonth();
+               const monthsInRange = frenchMonths.slice(startMonth, endMonth + 1);
+
+               const selectedCommercials = filters.commercial ? [filters.commercial] : Object.keys(objectives);
+               const selectedGammes = filters.gamme ? [filters.gamme] : [...allowedGammes, 'AUTRE'];
+
+               selectedCommercials.forEach(commercial => {
+                    if (!objectives[commercial]) return;
+
+                    selectedGammes.forEach(gamme => {
+                         if (!objectives[commercial][gamme]) return;
+
+                         monthsInRange.forEach(month => {
+                              total += objectives[commercial][gamme].monthly[month] || 0;
+                         });
+                    });
+               });
+
+               return total;
           }
 
           function updateDashboard() {
@@ -334,18 +373,16 @@
                });
 
                // Calculate objectives
-               let totalObjective = 0;
-               if (commercial && gamme) {
-                    totalObjective = getObjective(commercial, gamme);
-               } else if (commercial) {
-                    totalObjective = Object.values(objectives[commercial] || {}).reduce((a, b) => a + b, 0);
-               } else {
-                    totalObjective = Object.values(objectives).flatMap(c => Object.values(c)).reduce((a, b) => a + b, 0);
-               }
+               const totalObjective = calculateTotalObjective({
+                    commercial,
+                    gamme,
+                    startDate,
+                    endDate
+               });
 
                const totalAchieved = currentFilteredData.reduce((sum, item) => sum + item.amount, 0);
                const achievementRate = totalObjective > 0
-                    ? (totalAchieved / totalObjective * 100).toFixed(1) + '%'
+                    ? `${(totalAchieved / totalObjective * 100).toFixed(1)}%`
                     : 'N/A';
 
                // Update UI
@@ -368,7 +405,7 @@
                               datasets: [{
                                    label: 'Performance',
                                    data: [objective, achieved],
-                                   backgroundColor: ['#0f3460', '#fffb00']
+                                   backgroundColor: ['#3a3a5a', '#fffb00']
                               }]
                          },
                          options: {
@@ -390,10 +427,7 @@
                     return acc;
                }, {});
 
-               // Ensure all allowed gammes appear in chart
-               allowedGammes.forEach(g => {
-                    if (!gammeGroups[g]) gammeGroups[g] = 0;
-               });
+               allowedGammes.forEach(g => gammeGroups[g] = gammeGroups[g] || 0);
                gammeGroups['AUTRE'] = gammeGroups['AUTRE'] || 0;
 
                if (!charts.distribution) {
@@ -403,8 +437,8 @@
                               labels: [...allowedGammes, 'AUTRE'],
                               datasets: [{
                                    label: 'Répartition',
-                                   data: [...allowedGammes, 'AUTRE'].map(g => gammeGroups[g] || 0),
-                                   backgroundColor: ['#fffb00', '#0f3460', '#1a1a2e', '#16213e', '#4d4dff']
+                                   data: [...allowedGammes, 'AUTRE'].map(g => gammeGroups[g]),
+                                   backgroundColor: ['#fffb00', '#3a3a5a', '#2d2d48', '#1a1a2e', '#4d4dff']
                               }]
                          },
                          options: {
@@ -413,8 +447,7 @@
                          }
                     });
                } else {
-                    charts.distribution.data.labels = [...allowedGammes, 'AUTRE'];
-                    charts.distribution.data.datasets[0].data = [...allowedGammes, 'AUTRE'].map(g => gammeGroups[g] || 0);
+                    charts.distribution.data.datasets[0].data = [...allowedGammes, 'AUTRE'].map(g => gammeGroups[g]);
                     charts.distribution.update();
                }
           }
@@ -427,16 +460,18 @@
 
                const tbody = document.querySelector('#dataTable tbody');
                tbody.innerHTML = filteredBySearch.map(item => {
-                    const objective = getObjective(item.commercial, item.gamme);
+                    const commercial = item.commercial;
+                    const gamme = item.gamme;
+                    const objective = objectives[commercial]?.[gamme]?.global || 0;
                     const percentage = objective > 0
-                         ? (item.amount / objective * 100).toFixed(1) + '%'
+                         ? `${(item.amount / objective * 100).toFixed(1)}%`
                          : 'N/A';
 
                     return `
                     <tr>
-                        <td>${item.commercial}</td>
+                        <td>${commercial}</td>
                         <td>${item.client}</td>
-                        <td>${item.gamme}</td>
+                        <td>${gamme}</td>
                         <td>${formatCurrency(item.amount)}</td>
                         <td>${formatCurrency(objective)}</td>
                         <td>${percentage}</td>
@@ -445,44 +480,38 @@
                }).join('');
           }
 
-          // Initialization
           document.addEventListener('DOMContentLoaded', async () => {
                await loadData();
 
                // Populate commercial filter
                const commercials = [...new Set(allData.map(item => item.commercial))];
                const commercialSelect = document.getElementById('commercialSelect');
-               commercials.forEach(c => {
-                    commercialSelect.add(new Option(c, c));
-               });
+               commercials.forEach(c => commercialSelect.add(new Option(c, c)));
 
-               // Update gamme filter when commercial changes
+               // Update gamme filter
                commercialSelect.addEventListener('change', () => {
                     const gammeSelect = document.getElementById('gammeSelect');
                     gammeSelect.innerHTML = '<option value="">Toutes les gammes</option>';
 
-                    const selectedCommercial = commercialSelect.value;
-                    if (selectedCommercial && objectives[selectedCommercial]) {
-                         // Always show all allowed gammes + AUTRE
+                    const commercial = commercialSelect.value;
+                    if (commercial && objectives[commercial]) {
                          [...allowedGammes, 'AUTRE'].forEach(g => {
-                              if (objectives[selectedCommercial][g]) {
+                              if (objectives[commercial][g]) {
                                    gammeSelect.add(new Option(g, g));
                               }
                          });
                     }
-
                     updateDashboard();
                });
 
-               // Initial update
+               // Event listeners
+               document.getElementById('gammeSelect').addEventListener('change', updateDashboard);
+               document.getElementById('startDate').addEventListener('change', updateDashboard);
+               document.getElementById('endDate').addEventListener('change', updateDashboard);
+               document.getElementById('clientSearch').addEventListener('input', updateTable);
+
                updateDashboard();
           });
-
-          // Filter event listeners
-          document.getElementById('gammeSelect').addEventListener('change', updateDashboard);
-          document.getElementById('startDate').addEventListener('change', updateDashboard);
-          document.getElementById('endDate').addEventListener('change', updateDashboard);
-          document.getElementById('clientSearch').addEventListener('input', updateTable);
      </script>
 </body>
 
