@@ -275,20 +275,20 @@
 
           async function loadData() {
                // Load sales data
-               const salesRes = await fetch('vente.csv');
+               const salesRes = await fetch('vente v2.csv');
                const salesCSV = await salesRes.text();
 
                Papa.parse(salesCSV, {
                     header: true,
                     complete: (results) => {
                          allData = results.data.map(item => {
-                              const originalGamme = item.gamme === 'ND' ? 'AUTRE' : item.gamme;
+                              const originalGamme = item.Gamme === 'ND' ? 'AUTRE' : item.Gamme;
                               return {
                                    commercial: item.Vendeur,
                                    client: item.Client,
                                    gamme: allowedGammes.has(originalGamme) ? originalGamme : 'AUTRE',
-                                   date: new Date(item['Date de création'].split('/').reverse().join('-')),
-                                   amount: Number(item['Numeric Subtotal'].replace(/[^0-9]/g, '')) / 100
+                                   date: new Date(item['date de la commande'].split('/').reverse().join('-')),
+                                   amount: Number(item['Sous-total'].replace(/[^0-9]/g, '')) / 100
                               };
                          });
                     }
