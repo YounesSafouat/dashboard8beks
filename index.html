@@ -8,7 +8,9 @@
      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
      <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
      <style>
           :root {
                --primary: #0a0a1a;
@@ -354,26 +356,32 @@
                <div class="chart-container">
                     <canvas id="timelineChart"></canvas>
                </div>
-          </div>
-
-          <div class="table-container">
-               <div class="table-controls">
-                    <input type="text" id="clientSearch" placeholder="Rechercher client..." class="search-input">
+               <div class="chart-container">
+                    <canvas id="topSellerChart"></canvas>
                </div>
-               <table id="dataTable">
-                    <thead>
-                         <tr>
-                              <th>Commercial</th>
-                              <th>Client</th>
-                              <th>Gamme</th>
-                              <th>Montant</th>
-                              <th>Objectif</th>
-                              <th>% Réalisé</th>
-                         </tr>
-                    </thead>
-                    <tbody></tbody>
-               </table>
-          </div>
+               <div class="chart-container">
+                    <canvas id="bestSellingGammeBarChart"></canvas>
+
+               </div>
+
+               <div class="table-container">
+                    <div class="table-controls">
+                         <input type="text" id="clientSearch" placeholder="Rechercher client..." class="search-input">
+                    </div>
+                    <table id="dataTable">
+                         <thead>
+                              <tr>
+                                   <th>Commercial</th>
+                                   <th>Client</th>
+                                   <th>Gamme</th>
+                                   <th>Montant</th>
+                                   <th>Objectif</th>
+                                   <th>% Réalisé</th>
+                              </tr>
+                         </thead>
+                         <tbody></tbody>
+                    </table>
+               </div>
      </main>
 
      <script>
@@ -417,18 +425,22 @@
                     const salesRes = await fetch('vente.csv');
                     const salesCSV = await salesRes.text();
 
-                    Papa.parse(salesCSV, {
-                         header: true,
-                         complete: (results) => {
-                              allData = results.data.map(item => ({
-                                   commercial: item.Vendeur,
-                                   client: item.Client,
-                                   gamme: allowedGammes.has(item.Gamme) ? item.Gamme : 'AUTRE',
-                                   date: new Date(item['date de la commande'].split('/').reverse().join('-')),
-                                   amount: Number(item['Sous-total'].replace(/[^0-9]/g, '')) / 100
-                              }));
-                         }
+                    await new Promise(resolve => {
+                         Papa.parse(salesCSV, {
+                              header: true,
+                              complete: (results) => {
+                                   allData = results.data.map(item => ({
+                                        commercial: item.Vendeur,
+                                        client: item.Client,
+                                        gamme: allowedGammes.has(item.Gamme) ? item.Gamme : 'AUTRE',
+                                        date: new Date(item['date de la commande'].split('/').reverse().join('-')),
+                                        amount: Number(item['Sous-total'].replace(/[^0-9]/g, '')) / 100
+                                   }));
+                                   resolve(); // Attendre la fin du parsing
+                              }
+                         });
                     });
+
 
                     // Load objectives
                     const objRes = await fetch('objectives.json');
@@ -532,6 +544,8 @@
                updatePerformanceChart(totalObjective, totalAchieved);
                updateDistributionChart();
                updateTimelineChart();
+               updateTopSellerChart();
+               updateBestSellingGammeBarChart();
                updateTable();
           }
 
@@ -605,6 +619,7 @@
 
           function updateTimelineChart() {
                const ctx = document.getElementById('timelineChart');
+
                const salesByMonth = frenchMonths.map((_, index) =>
                     currentFilteredData.filter(item => item.date.getMonth() === index)
                          .reduce((sum, item) => sum + item.amount, 0)
@@ -663,6 +678,7 @@
                     charts.timeline.data = data;
                     charts.timeline.update();
                }
+
           }
 
           function updateTable() {
@@ -693,6 +709,157 @@
                   `;
                }).join('');
           }
+          function updateTopSellerChart() {
+               const ctx = document.getElementById('topSellerChart');
+
+               // Aggregate total sales by commercial per month
+               const topSellers = frenchMonths.map((_, monthIndex) => {
+                    const salesByMonth = currentFilteredData.filter(item => item.date.getMonth() === monthIndex);
+
+                    const salesByCommercial = salesByMonth.reduce((acc, item) => {
+                         acc[item.commercial] = (acc[item.commercial] || 0) + item.amount;
+                         return acc;
+                    }, {});
+
+                    // Sort sales by commercial and get the top seller
+                    const sortedSales = Object.entries(salesByCommercial).sort((a, b) => b[1] - a[1]);
+                    const topSeller = sortedSales[0] || ['Aucun', 0]; // Default if no sales
+
+                    return topSeller;
+               });
+
+               // Prepare data for the chart
+               const labels = frenchMonths.map(m => m.charAt(0).toUpperCase() + m.slice(1));
+               const topSellersNames = topSellers.map(seller => seller[0] || 'Aucun');
+               const topSellersValues = topSellers.map(seller => seller[1] || 0);
+
+               const data = {
+                    labels: labels,
+                    datasets: [{
+                         label: 'Top Seller (Montant des ventes)',
+                         data: topSellersValues,
+                         borderColor: '#ffd700',
+                         backgroundColor: '#ffd700',
+                         tension: 0.4,
+                         fill: true
+                    }]
+               };
+
+               const options = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                         legend: { display: false },
+                         tooltip: {
+                              callbacks: {
+                                   label: function (tooltipItem) {
+                                        const index = tooltipItem.dataIndex;
+                                        const sellerName = topSellersNames[index];
+                                        const salesAmount = topSellersValues[index];
+                                        return `Nom: ${sellerName} - Montant: ${salesAmount} MAD`;
+                                   }
+                              }
+                         }
+                    },
+                    scales: {
+                         y: {
+                              beginAtZero: true,
+                              grid: { color: '#ffffff10' },
+                              ticks: { color: '#fff' }
+                         },
+                         x: {
+                              grid: { color: '#ffffff10' },
+                              ticks: { color: '#fff' }
+                         }
+                    }
+               };
+
+               // Create or update the chart
+               if (!charts.topSeller) {
+                    charts.topSeller = new Chart(ctx, {
+                         type: 'bar',
+                         data: data,
+                         options: options
+                    });
+               } else {
+                    charts.topSeller.data = data;
+                    charts.topSeller.options = options;
+                    charts.topSeller.update();
+               }
+          }
+          function updateBestSellingGammeBarChart() {
+               const ctx = document.getElementById('bestSellingGammeBarChart');
+
+               // Aggregate sales data per gamme per month
+               const salesByGammeMonth = {};
+
+               currentFilteredData.forEach(item => {
+                    const month = new Date(item.date).toLocaleString('default', { month: 'short' }); // "Jan", "Feb", ...
+                    const gamme = item.gamme;
+
+                    if (!salesByGammeMonth[gamme]) {
+                         salesByGammeMonth[gamme] = {};
+                    }
+
+                    salesByGammeMonth[gamme][month] = (salesByGammeMonth[gamme][month] || 0) + item.amount;
+               });
+
+               // Extract months in sorted order
+               const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+               // Convert data to arrays for the chart
+               const datasets = Object.keys(salesByGammeMonth).map((gamme, index) => {
+                    return {
+                         label: gamme,
+                         data: months.map(month => salesByGammeMonth[gamme][month] || 0),
+                         backgroundColor: `rgba(${index * 40}, ${150 - index * 15}, ${255 - index * 30}, 0.7)`,
+                         borderColor: `rgba(${index * 40}, ${150 - index * 15}, ${255 - index * 30}, 1)`,
+                         borderWidth: 1
+                    };
+               });
+
+               const data = {
+                    labels: months,
+                    datasets: datasets
+               };
+
+               const options = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                         x: { stacked: true },
+                         y: { stacked: true }
+                    },
+                    plugins: {
+                         legend: { position: 'top' },
+                         tooltip: {
+                              callbacks: {
+                                   label: function (tooltipItem) {
+                                        const gamme = tooltipItem.dataset.label;
+                                        const salesAmount = tooltipItem.raw;
+                                        return `${gamme}: ${salesAmount} MAD`;
+                                   }
+                              }
+                         }
+                    }
+               };
+
+               // Create or update the chart
+               if (!charts.bestSellingGammeBar) {
+                    charts.bestSellingGammeBar = new Chart(ctx, {
+                         type: 'bar',
+                         data: data,
+                         options: options
+                    });
+               } else {
+                    charts.bestSellingGammeBar.data = data;
+                    charts.bestSellingGammeBar.options = options;
+                    charts.bestSellingGammeBar.update();
+               }
+          }
+
+
+
 
           document.addEventListener('DOMContentLoaded', async () => {
                await loadData();
